@@ -1,0 +1,480 @@
+---
+title: "Analyse de données de panels : Poligma"
+author: "Sarah Madeleine & Meriem Michaut"
+date: "16 février 2018"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+###Définition du dossier de travail et appel des librairies
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+library(Matrix)
+library(lme4)
+library(lmerTest)
+library(readxl)
+library(tidyverse)
+```
+
+### **Traitement des données**
+
+###Import des données
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+data <- read_csv2(file = "Table_Intersection_BV_IRIS_2012_PRES_All3.csv")
+```
+On remarque que R signale un certain nombre de doublons dans les variables. On procède à leur retrait.
+
+###Retrait des doublons
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+data = data[,-c(143,144,227,229,232,234,332)]
+#glimpse(data) #observation des données "data"
+```
+
+###Retrait des variables inutiles:
+Il nous a été imposé de ne travailler qu'avec la catégorie des femmes dans la classe 2.
+On procède donc au retrait des variables qui ne nous concernent pas.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+drops <- c("P12_POP1564", "P12_POP1524", "P12_POP2554", "P12_POP5564", "P12_H1564", "P12_H1524", "P12_H2554", "P12_H5564", "P12_ACT1564", "P12_ACT1524", "P12_ACT2554", "P12_ACT5564", "P12_HACT1564", "P12_HACT1524", "P12_HACT2554", "P12_HACT5564", "P12_ACTOCC1564", "P12_ACTOCC1524", "P12_ACTOCC2554", "P12_ACTOCC5564", "P12_HACTOCC1564", "P12_HACTOCC1524", "P12_HACTOCC2554", "P12_HACTOCC5564", "P12_CHOM1564", "P12_CHOM1524", "P12_CHOM2554", "P12_CHOM5564", "P12_HCHOM1564", "P12_INACT1564", "P12_HINACT1564", "P12_ETUD1564", "P12_HETUD1564", "P12_RETR1564", "P12_HRETR1564", "P12_AINACT1564", "P12_HAINACT1564", "P12_ACTOCC15P", "P12_HACTOCC15P", "P12_SAL15P", "P12_HSAL15P", "P12_NSAL15P", "P12_HNSAL15P", "P12_SAL15P_TP", "P12_HSAL15P_TP", "C12_MENPSEUL", "C12_MENHSEUL", "C12_PMEN_MENPSEUL", "C12_PMEN_MENHSEUL", "P12_NSCOL15P", "P12_NSCOL15P_DIPL0", "P12_NSCOL15P_CEP", "P12_NSCOL15P_BEPC", "P12_NSCOL15P_CAPBEP", "P12_NSCOL15P_BAC", "P12_NSCOL15P_BACP2", "P12_NSCOL15P_SUP", "P12_HNSCOL15P", "P12_HNSCOL15P_DIPL0", "P12_HNSCOL15P_CEP", "P12_HNSCOL15P_BEPC", "P12_HNSCOL15P_CAPBEP", "P12_HNSCOL15P_BAC", "P12_HNSCOL15P_BACP2", "P12_HNSCOL15P_SUP", "P12_POP0014", "P12_POP1529", "P12_POP3044", "P12_POP4559", "P12_POP6074", "P12_POP75P", "P12_POP0019", "P12_POP2064", "P12_POP65P", "P12_POPH", "P12_H0014", "P12_H1529", "P12_H3044", "P12_H4559", "P12_H6074", "P12_H75P", "P12_H0019", "P12_H2064", "P12_H65P", "P12_POPF", "P12_F0014", "P12_F1529", "P12_F3044", "P12_F4559", "P12_F6074", "P12_F75P", "C12_H15P", "C12_H15P_CS1", "C12_H15P_CS2", "C12_H15P_CS3", "C12_H15P_CS4", "C12_H15P_CS5", "C12_H15P_CS6", "C12_H15P_CS7", "C12_H15P_CS8")
+donnees <- data[ , !(names(data) %in% drops)]
+#glimpse(donnees) #vérification des données "donnees"
+```
+
+
+###Transformation de certaines variables en facteurs
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+donnees[,1] <- lapply(donnees[,1] , factor) #Bureau_de_vote
+donnees[,5] <- lapply(donnees[,5] , factor) #Tour
+donnees[,15:17] <- lapply(donnees[,15:17] , factor) #insee_com, nom_com, iris
+donnees[,20] <- lapply(donnees[,20] , factor) #typ_iris
+#glimpse(donnees) #Verification que les variables ont bien ete modifiees
+```
+
+
+
+###**Structration du jeu de données:**
+###Changement des noms de colonnes commençant pas un "%"
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+colnames(donnees)[colnames(donnees)=="%_EXPRIMES"] <- "PERC_EXPRIMES"
+colnames(donnees)[colnames(donnees)=="%_VOTANTS"] <- "PERC_VOTANTS"
+colnames(donnees)[colnames(donnees)=="%_NULS"] <- "PERC_NULS"
+colnames(donnees)[colnames(donnees)=="%_ABSTENTION"] <- "PERC_ABSTENTION"
+#colnames(donnees) #Verification que les noms de variables ont bien change
+```
+
+###Définition de la variable à expliquer
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+Y=donnees[,6]
+Y=unlist(Y, recursive=TRUE, use.names=TRUE) #conversion de Y en vecteur
+#is.vector(Y) #verification de la convertion
+```
+
+
+
+###**Séparation en jeu de données en "test" et "train"**
+Séparation à 75% de la taille de l'échantillon
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+smp_size <- floor(0.75 * nrow(donnees)) #définir la taille de l'échantillon
+set.seed(123) #définir l'aléa
+train_ind <- sample(seq_len(nrow(donnees)), size = smp_size)
+train <- donnees[train_ind, ]
+test <- donnees[-train_ind, ]
+```
+
+###Séparation de la variable à expliquer
+```{r echo = TRUE, results ='hide', warning = FALSE} 
+
+Y_train=train[,6] #récupération de la variable PERC_VOTANTS qui est à la 6ème colonne
+Y_test=test[,6] #récupération de la variable PERC_VOTANTS qui est à la 6ème colonne
+Y_train=unlist(Y_train, recursive=TRUE, use.names=TRUE) #conversion en vecteur
+Y_test=unlist(Y_test, recursive=TRUE, use.names=TRUE) #conversion en vecteur
+#is.vector(Y_train) #verification de la convertion
+#is.vector(Y_test) #verification de la convertion
+```
+
+###**Choix du modèle à effets fixes:**
+Pour ce faire, nous avons choisi la méthode d'étude de la corrélation des variables explicatives avec la variable à expliquer.
+
+###Construction du jeu de données avec données numériques exclusivement (sans partition test/train)
+```{r echo = TRUE, results ='hide', warning = FALSE} 
+
+drop <- c("Bureau_de_vote","PERC_VOTANTS", "Tour", "insee_com", "nom_com", "iris","nom_iris","typ_iris","code_iris","code_type_iris")
+donnees_num = donnees[ , !(names(donnees) %in% drop)]
+```
+
+###Test de corrélation de Pearson
+Test de corrélation des variables une à une avec Y
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+correlations = cor(donnees_num, Y, method="pearson", use="complete.obs")
+#correlations 
+```
+
+Le test montre qu'il y a 16 variables qui ont une forte corrélation (valeur absolue la plus proche de 1). Nous prendrons donc ces variables.
+
+###Régression linéaire:
+Estimation des paramètres du modèle:
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+model_16 = lm(Y~P12_NPER_RP_LOCHLMV+P12_ANEM_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+P12_RP_LOCHLMV+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+C12_PMEN_CS6+C12_NE24F4P+DEC_TP6012+DISP_TP6012+P12_FAINACT1564+DEC_PCHO12+C12_F15P_CS6+DISP_PPFAM12+P12_ANEM_RP_LOC, data = donnees_num)
+#  BIC model_239
+BIC162 = BIC(model_16) #26737.18
+```
+
+
+Nous avons effectué une régression linéaire sur les autres variables (celles avec une moins bonne corrélation) et le BIC du modèle obtenu était plus grand que celui-ci. Ce qui confirme le test de corrélation de Pearson. Nous garderons donc ce modèle à 16 variables.
+
+
+###**Choix du modèle à effets aléatoires:**
+Pour ce faire, nous estimerons 3 type de modèles:
+- Modèle avec effet aléatoire sur l'intercept
+- Modèle avec effet aléatoire sur la pente
+- Modèle avec effet aléatoire sur l'intercept et sur la pente en même temps
+Et nous comparerons ces 3 modèles afin de définir lequel s'adapte au mieux au jeu de données.
+
+###Appel des librairies nécessaires.
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(leaps)
+```
+
+
+###Séparation du jeu de données numériques en "traint" et "test"
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+smp_size_num <- floor(0.75 * nrow(donnees_num))
+set.seed(123)
+train_ind_num <- sample(seq_len(nrow(donnees_num)), size = smp_size_num)
+train_num <- donnees_num[train_ind_num, ]
+test_num <- donnees_num[-train_ind_num, ]
+```
+
+
+
+###Modèle avec variables à effets fixes et variable à effet aléatoire sur l'intercept*
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+lmer_model_16 = lmer(Y_train~Tour+P12_NPER_RP_LOCHLMV+P12_ANEM_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+P12_RP_LOCHLMV+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+C12_PMEN_CS6+C12_NE24F4P+DEC_TP6012+DISP_TP6012+P12_FAINACT1564+DEC_PCHO12+C12_F15P_CS6+DISP_PPFAM12+P12_ANEM_RP_LOC +(1|Bureau_de_vote), REML = FALSE, data = train)
+summary(lmer_model_16)
+```
+On note que le BIC de ce modèle vaut: **17486.735**
+
+
+
+###Validation croisée pour le choix des variables:
+Afin de définir quelles variables nous allons conserver dans ce modèle, nous effectuons une backward cross-validation (validation croisée dégressive) 
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+regsub_model_16 = regsubsets(Y_train~P12_NPER_RP_LOCHLMV+P12_ANEM_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+P12_RP_LOCHLMV+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+C12_PMEN_CS6+C12_NE24F4P+DEC_TP6012+DISP_TP6012+P12_FAINACT1564+DEC_PCHO12+C12_F15P_CS6+DISP_PPFAM12+P12_ANEM_RP_LOC, method = "backward", data = train_num)
+#summary(regsub_model_16)
+plot(regsub_model_16, scale="bic")
+```
+
+
+
+
+Le graphe du BIC de la cross-validation nous propose de conserver les 9 variables suivantes:
+**"Intercept", "P12_NPER_RP_LOCHLMV", "P12_FNSCOL15P_DIPL0", "DISP_PPMINI12", "DISP_PPLOGT12", "DISP_PPSOC12", "DISP_TP6012", "P12_FAINACT1564","P12_ANEM_RP_LOC"**
+
+###Estimation des paramètres du modèle avec la méthode ML:
+
+
+Estimation des paramètres du regsub_model_16 avec facteur à effet fixe *"Tour"* et facteur à effet aléatoire *"Bureau de vote"*  
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsub_model_16 = lmer(Y_train~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12
+                            +DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564
+                            +P12_ANEM_RP_LOC+(1|Bureau_de_vote), REML = FALSE, data = train)
+```
+
+On note que le BIC de ce modèle vaut: **35820.88**
+
+###Estimation avec la méthode REML:
+Estimation finale des paramètres du *model_16* avec REML avec facteur à effet fixe *"Tour"* et facteur à effet aléatoire *"Bureau de vote"*
+```{r echo = TRUE, results ='hide', warning = FALSE}  
+
+lmer_model_16_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_ANEM_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+P12_RP_LOCHLMV+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+C12_PMEN_CS6+C12_NE24F4P+DEC_TP6012+DISP_TP6012+P12_FAINACT1564+DEC_PCHO12+C12_F15P_CS6+DISP_PPFAM12+P12_ANEM_RP_LOC+(1|Bureau_de_vote), data = test)
+#Prédiction du Y avec lmer_model239_REML
+predict_Y_model_16 = predict(lmer_model_16_REML, re.form = NA, data = test)
+#RMSE lmer_model_16_REML
+rmse_model_16 <- sqrt(mean((Y_test - predict_Y_model_16)^2,na.rm=TRUE)) 
+rmse_model_16
+```
+
+###Validation croisée avec la méthode dégressive:
+
+Estimation des paramètres du modèle *regsub_model_16_REML* avec REML avec facteur à effet fixe "Tour" et facteur à effet aléatoire "Bureau de vote"
+```{r echo = TRUE, results ='hide', warning = FALSE}  
+
+lmer_regsub_model_16_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC + (1|Bureau_de_vote), data = test)
+
+#Prédiction du Y avec lmer_regsub_model_16_REML
+predict_Y_regsub_model_16 = predict(lmer_regsub_model_16_REML, re.form = NA, data = test)
+
+#RMSE lmer_regsub_model_16_REML
+rmse_regsub_model_16 <- sqrt(mean((Y_test - predict_Y_regsub_model_16)^2,na.rm=TRUE))
+rmse_regsub_model_16
+```
+
+On garde le modele avec le plus petit RMSE soit le **lmer_regsub_model_16_REML** qui a comme variables explicatives:
+
+*Tour, P12_NPER_RP_LOCHLMV, P12_FNSCOL15P_DIPL0, DISP_PPMINI12, DISP_PPLOGT12, DISP_PPSOC12, DISP_TP6012, P12_FAINACT1564, P12_ANEM_RP_LOC *
+
+et comme facteur à effet aléatoire:
+*Bureau_de_vote*
+
+On note bien que le RMSE pour le meilleur modèle sur l'intercept est : **3.850602**
+
+
+###Modèle avec variables à effets fixes et variable à effet aleatoire sur la pente*
+
+####Choix du modèle
+Estimation des paramètres du *lmer_regsub_model_16_REML* avec ML avec facteur à effet fixe "Tour" et facteur à effet aléatoire "Bureau de vote"
+
+Pour ce faire, on teste chacune des 9 variables dans la partie aléatoire
+
+Variable 1: **P12_ANEM_RP_LOC**
+```{r echo = TRUE, results ='hide', warning = FALSE}  
+lmer_regsub_P12_ANEM_RP_LOC_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_ANEM_RP_LOC-1|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 13409.463
+```
+
+Variable 2: **P12_FAINACT1564**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+lmer_regsub_P12_FAINACT1564_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_FAINACT1564-1|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 13385.130
+```
+
+Variable 3: **DISP_TP6012**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+lmer_regsub_DISP_TP6012_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_TP6012-1|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 13409.470
+```
+
+Variable 4: **DISP_PPSOC12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+lmer_regsub_DISP_PPSOC12_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12-1|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 13361.106
+```
+
+Variable 5: **P12_NPER_RP_LOCHLMV**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_P12_NPER_RP_LOCHLMV_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_NPER_RP_LOCHLMV-1|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 13377.655
+```
+
+Variable 6: **P12_FNSCOL15P_DIPL0**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_P12_FNSCOL15P_DIPL0_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_FNSCOL15P_DIPL0-1|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 13383.460
+```
+
+Variable 7: **DISP_PPMINI12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPMINI12_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPMINI12-1|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 13357.096
+```
+
+Variable 8: **DISP_PPLOGT12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPLOGT12_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPLOGT12-1|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 13359.329
+```
+
+Variable 9: **DISP_PPSOC12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPSOC12_P = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12-1|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 13361.106
+```
+
+On remarque que le modèle avec la variable *DISP_PPMINI12* a le plus petit BIC = **13357.096**
+C'est donc sur celui-ci que l'on va effectuer une prédiction. 
+
+####Prédictions:
+Nouveau calcul du modèle mais avec la méthode REML cette fois-ci et non pas ML
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPMINI12_P_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPMINI12-1|Bureau_de_vote), data = test)
+#Prediction du Y avec lmer_regsubset_DISP_PPSOC12_REML
+predict_DISP_PPSOC12_P = predict(lmer_regsubset_DISP_PPMINI12_P_REML, data = test)
+#RMSE lmer_regsubset_DISP_PPSOC12_REML
+rmse_DISP_PPSOC12_P <- sqrt(mean((Y_test - predict_DISP_PPSOC12_P)^2,na.rm=TRUE))
+rmse_DISP_PPSOC12_P
+```
+
+
+On garde le modèle avec le plus petit RMSE soit le **lmer_regsubset_DISP_PPMINI12_P_REML** qui a comme variables explicatives:
+*Tour, P12_NPER_RP_LOCHLMV, P12_FNSCOL15P_DIPL0, DISP_PPMINI12, DISP_PPLOGT12, DISP_PPSOC12, DISP_TP6012, P12_FAINACT1564, P12_ANEM_RP_LOC*
+et comme facteur à effet aléatoir:
+*Bureau_de_vote* sur la pente de la variable *DISP_PPMINI12*
+
+On note bien que le RMSE pour le meilleur modèle sur la pente est : **3.465237**
+
+
+###Modèle avec variables à effets fixes et variable à effet aleatoire sur la pente et l'intercept
+
+####Choix du modèle
+
+Estimation des paramètres du modèle  **lmer_regsub_model_16_REML** avec facteur à effet fixe **"Tour"** et facteur effet aléatoir **"Bureau de vote"`** avec la méthode ML.
+
+Comme pour le modèle avec facteur à effet aléatoire sur la pente, on procède au choix du modèle en testant toutes les variables tour à tour dans la partie aléatoire sur la pente.
+
+Variable 1: **P12_ANEM_RP_LOC**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsub_P12_ANEM_RP_LOC = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_ANEM_RP_LOC|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 12758.334
+```
+
+Variable 2: **P12_FAINACT1564**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsub_P12_FAINACT1564 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_FAINACT1564|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 12579.993
+```
+
+Variable 3: **DISP_TP6012**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsub_DISP_TP6012 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_TP6012|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 12567.799
+```
+
+Variable 4: **DISP_PPSOC12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsub_DISP_PPSOC12 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12|Bureau_de_vote), REML = FALSE, data = test)
+# BIC 12567.82
+```
+
+Variable 5: **P12_NPER_RP_LOCHLMV**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_P12_NPER_RP_LOCHLMV = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_NPER_RP_LOCHLMV|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 12585.759 
+```
+
+Variable 6: **P12_FNSCOL15P_DIPL0**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_P12_FNSCOL15P_DIPL0 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(P12_FNSCOL15P_DIPL0|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 12578.870 
+```
+
+Variable 7: **DISP_PPMINI12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPMINI12 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPMINI12|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 12572.028 
+```
+
+Variable 8: **DISP_PPLOGT12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPLOGT12 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPLOGT12|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 12567.219 
+```
+
+Variable 9: **DISP_PPSOC12**
+```{r echo = TRUE, results ='hide', warning = FALSE}
+
+lmer_regsubset_DISP_PPSOC12 = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12|Bureau_de_vote), data = test, REML = FALSE)
+#BIC = 12567.82
+```
+
+On remarque que le BIC du modèle avec la variable *DISP_PPLOGT12* est le plus petit des 9 : **12567.219**, c'est donc ce modèle que nous conserverons et sur lequel nous ferons les prédictions.
+
+Nouveau calcul du modèle mais avec la méthode REML cette fois-ci et non pas ML
+```{r echo = TRUE, results ='hide', warning = FALSE}
+#Estimation des paramètres
+lmer_regsubset_DISP_PPLOGT12_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPLOGT12|Bureau_de_vote), data = test)
+#Prédiction avec lmer_regsubset_DISP_PPLOGT12
+predict_Y_DISP_PPLOGT12 = predict(lmer_regsubset_DISP_PPLOGT12_REML, re.form = NA, data = test)
+#RMSE lmer_regsubset_DISP_PPLOGT12
+rmse_DISP_PPLOGT12 <- sqrt(mean((Y_test - predict_Y_DISP_PPLOGT12)^2,na.rm=TRUE))
+rmse_DISP_PPLOGT12
+#3.816147
+```
+
+####Prédictions:
+Prédiction avec lmer_regsub_DISP_TP6012
+```{r echo = TRUE, results ='hide', warning = FALSE}
+#Estimation des paramètres
+lmer_regsub_DISP_PPSOC12_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12|Bureau_de_vote), data = test)
+#Prédiction du Y avec lmer_regsub_DISP_TP6012
+predict_Y_DISP_PPSOC12 = predict(lmer_regsub_DISP_PPSOC12_REML, re.form = NA, data = test)
+#RMSE lmer_model239_REML
+rmse_DISP_PPSOC12 <- sqrt(mean((Y_test - predict_Y_DISP_PPSOC12)^2,na.rm=TRUE))
+rmse_DISP_PPSOC12
+```
+
+Prédiction avec lmer_regsubset_DISP_PPLOGT12
+```{r echo = TRUE, results ='hide', warning = FALSE}
+#Estimation des paramètres
+lmer_regsubset_DISP_PPLOGT12_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPLOGT12|Bureau_de_vote), data = test)
+#Prédiction du Y avec lmer_regsubset_DISP_PPLOGT12_REML
+predict_DISP_PPLOGT12 = predict(lmer_regsubset_DISP_PPLOGT12_REML, re.form = NA, data = test)
+#RMSE lmer_regsubset_DISP_PPLOGT12
+rmse_DISP_PPLOGT12 <- sqrt(mean((Y_test - predict_DISP_PPLOGT12)^2,na.rm=TRUE))
+rmse_DISP_PPLOGT12
+```
+
+Prédiction avec lmer_regsubset_DISP_PPLOGT12
+```{r echo = TRUE, results ='hide', warning = FALSE}
+#estimation des paramètres
+lmer_regsubset_DISP_PPSOC12_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPSOC12|Bureau_de_vote), data = test)
+#Prediction du Y avec lmer_regsubset_DISP_PPSOC12_REML
+predict_DISP_PPSOC12 = predict(lmer_regsubset_DISP_PPSOC12_REML, data = test)
+#RMSE lmer_regsubset_DISP_PPSOC12_REML
+rmse_DISP_PPSOC12 <- sqrt(mean((Y_test - predict_DISP_PPLOGT12)^2,na.rm=TRUE))
+rmse_DISP_PPSOC12
+#3.816147
+```
+
+On remarque que le RMSE des deux modèles aux plus petits BIC sont rigoureusement identiques. RMSE= **3.816147.**
+On sélectionne donc celui au plus petit BIC en estimation avec ML, soit le modèle lmer_regsubset_DISP_PPLOGT12_REML
+
+
+Aux vues des résultats obtenus avec les différents lmer (sur la pente, sur l'intercept, sur les deux en même temps) et avec les RMSE suivants:
+- Modèle avec effet aléatoire sur l'intercept : 3.850602
+- Modèle avec effet aléatoire sur la pente : 3.465237
+- Modèle avec effet aléatoire sur l'intercept et sur la pente : 3.816147
+
+
+Le modèle avec le plus petit RMSE est celui sur la pente: **3.465237**
+C'est donc celui qu'on retiendra pour expliquer le taux de participation des votants.
+
+
+lmer_regsubset_DISP_PPMINI12_P_REML = lmer(Y_test~Tour+P12_NPER_RP_LOCHLMV+P12_FNSCOL15P_DIPL0+DISP_PPMINI12+DISP_PPLOGT12+DISP_PPSOC12+DISP_TP6012+P12_FAINACT1564+P12_ANEM_RP_LOC+(DISP_PPMINI12-1|Bureau_de_vote), data = test)
+
+
+L'estimation des paramètres de ce modèle est donnée par:
+```{r echo = TRUE, results ='hide', warning = FALSE}
+summary(lmer_regsubset_DISP_PPMINI12_P_REML)
+```
+
+Le meilleur modèle mixte (le moins mauvais) serait donc:
+
+%_VOTANTS = 7.996 + 1.994 Tour2 - 5.126e-03 P12_NPER_RP_LOCHLMV - 2.102e-02 P12_FNSCOL15P_DIPL0 - 3.733 DISP_PPMINI12 - 7.081 DISP_PPLOGT12 + 3.088 DISP_PPSOC12 + 3.793e-02 DISP_TP6012 + 1.674e-02 P12_FAINACT1564 +  7.034e-04 P12_ANEM_RP_LOC 
+
+
+La variable explicative la plus significative est : **DISP_TP6012** soit la variable qui donne le taux de pauvreté au seuil de 60 % du revenu disponible par UC médian métropolitain.
+
+La seconde variable la plus significative est : **P12_FAINACT1564**: Nombre d'autres inactifs femmes de 15 à 64 ans
+(Nombre de femmes entre 15 et 64 ans inactives et qui n'appartiennent à aucune des classes suivantes: chomeuses, actives, retraitées, étudiantes, élèves, stagiaires non rémunérées, agricultrices, artisans, cadres, ouvrières, emplyées actives, professions intermédiaires, salariées)
+
+
+
